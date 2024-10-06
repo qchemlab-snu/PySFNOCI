@@ -112,6 +112,14 @@ def python_list_to_c_array(python_list):
             group_size = len(group)
             group_sizes[i] = group_size  
         return flat_list, group_sizes, num_groups
+    
+def str2occ(str0,norb):
+    occ=numpy.zeros(norb)
+    for i in range(norb):
+        if str0 & (1<<i):
+            occ[i]=1
+
+    return occ
 ####################################################################################
 
 #######################Integral, SVD helper#########################################
@@ -133,14 +141,6 @@ def J_matrix(eri,den):
 def K_matrix(eri,den):
     K=-lib.einsum('aijb,ji->ab',eri,den)
     return K
-
-def str2occ(str0,norb):
-    occ=numpy.zeros(norb)
-    for i in range(norb):
-        if str0 & (1<<i):
-            occ[i]=1
-
-    return occ
 #######################################################################################
 
 
