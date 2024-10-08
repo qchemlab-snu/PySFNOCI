@@ -1169,15 +1169,13 @@ class SFNOCI(CASBase):
       MO, PO, group = self.optimize_mo(mo)
       cput1 = logger.timer(self, 'core-vir rotation', *cput0)
       Adm = self.get_active_dm(mo)
-      cput1 = logger.timer(self,'Active space density matrix calculation', *cput1)
       if group is None :
          W, TSc = self.get_SVD_matrices(MO , PO)
       else: W, TSc = self.get_SVD_matrices(MO , group)       
-      cput1 = logger.timer(self,'SVD and core density matrix calculation', *cput1)     
       h1eff, energy_core = self.get_h1cas(Adm , MO , W)
       eri = self.get_h2eff(mo)
       self.mo_eri = eri
-      cput1 = logger.timer(self,'effective hamiltonian calculation', *cput1)
+      cput1 = logger.timer(self,'Matrices calculation', *cput1)
       e, c = kernel_SFNOCI(self, h1eff, eri, self.ncas, self.nelecas, PO, group, TSc, energy_core, ci0, link_index=None,
                            tol = tol, lindep= lindep, max_cycle=max_cycle, max_space=max_space, nroots=nroots, davidson_only= davidson_only,
                            pspace_size= pspace_size, ecore= ecore, verbose=self.verbose, **kwargs)
