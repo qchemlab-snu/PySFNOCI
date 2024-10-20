@@ -1219,16 +1219,22 @@ class SFNOCI(CASBase):
       Solve CI problem by just diagonalizing Hamiltonian matrix
       '''
       if mo is not None: self.mo_coeff = mo
+      cput0 = (logger.process_clock(), logger.perf_counter())
       MO, PO, group = self.optimize_mo(mo, debug)
+      cput1 = logger.timer(self, 'core-vir rotation', *cput0)
       Adm = self.get_active_dm(mo)
       if group is None :
          W, TSc = self.get_SVD_matrices(MO , PO)
-      else: W, TSc = self.get_SVD_matrices(MO , group)       
+      else: W, TSc = self.get_SVD_matrices(MO , group)
+      cput1 = logger.timer(self,'SVD and core density matrix calculation', *cput1)          
       h1eff, energy_core = self.get_h1cas(Adm , MO , W)
       self.mo_eri = self.get_h2eff(mo)
+      cput1 = logger.timer(self,'effective hamiltonian calculation', *cput1)
       hamiltonian = self.construct_reduced_hamiltonian(mo, h1eff, energy_core, PO, TSc)
       eigenvalues, eigenvectors = gen_eig(hamiltonian)
       self.ci = eigenvectors
+      logger.timer(self, 'CI solving', *cput1)
+      logger.timer(self, 'All process', *cput0)
       return eigenvalues, eigenvectors
   
   def matrix_kernel(self, mo = None):
