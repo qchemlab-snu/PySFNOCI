@@ -61,8 +61,12 @@ double *TSc, double *energy_core){
 int aa, ia, str1a, str0a;
 int ab, ib, str1b, str0b;
 int a1, i1, a2, i2;
-int w_occa[ncas], w_occb[ncas], x_occa[ncas], x_occb[ncas];
-int x_occ[ncas], w_occ[ncas];
+int* w_occa = (int*) malloc(ncas * sizeof(int));
+int* w_occb = (int*) malloc(ncas * sizeof(int));
+int* x_occa = (int*) malloc(ncas * sizeof(int));
+int* x_occb = (int*) malloc(ncas * sizeof(int));
+int* w_occ = (int*) malloc(ncas * sizeof(int));
+int* x_occ = (int*) malloc(ncas * sizeof(int));
 int p1, p2, p; 
 int num;
 
@@ -200,4 +204,10 @@ for (int str0a = 0; str0a < na; str0a++) {
             ci1[str0a * nb + str0b] += energy_core[p] * ci0[str0a * nb + str0b];
 }
 }
+free(w_occ);
+free(w_occa);
+free(w_occb);
+free(x_occ);
+free(x_occa);
+free(x_occb);
 }

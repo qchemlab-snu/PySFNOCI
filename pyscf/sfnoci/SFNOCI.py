@@ -1667,11 +1667,34 @@ if  __name__ == '__main__':
     
     from pyscf.mcscf import addons
     mo = addons.sort_mo(mySFNOCI,rm.mo_coeff, AS_list,1)
-    
-    reei, ev = mySFNOCI.kernel(mo, nroots = 12)
-    print(reei,ev)
+    PO = possible_occ(4,4)
+    ac_mo_coeff = mo[:,[4,5,6,7]]
+    #reei, ev = mySFNOCI.kernel(mo, nroots = 12)
+    #print(reei,ev)
     #print(mySFNOCI.spin_square(ev[32]))
-    
+    def electron_num_by_lowdin(mol, ac_mo_coeff,PO, aolabel, thres = 0.2):
+        ova = mol.intor_symmetric("cint1e_ovlp_sph")
+        e,v = numpy.linalg.eigh(ova)
+        s12 = numpy.dot(v *numpy.sqrt(e), v.T.conj())
+
+        aolist = mol.search_ao_label(aolabel)
+        print(aolist)
+        a = len(aolist)
+        p = len(PO)
+        n = len(PO[0])
+        N = ac_mo_coeff.shape[0]
+        ao_elecnums = numpy.zeros(p)
+        for i in range(p):
+            one_list = numpy.where(PO[i] == 1)[0]
+            two_list = numpy.where(PO[i] == 2)[0]
+            pT1 = numpy.dot(ac_mo_coeff[:,one_list],ac_mo_coeff[:,one_list].T)
+            pT2 = numpy.dot(ac_mo_coeff[:,two_list],ac_mo_coeff[:,two_list].T)
+            pT = pT1 + pT2 * 2
+            pTOAO = reduce(numpy.dot,(s12,pT,s12))
+            for index, j in enumerate(aolist):
+                ao_elecnums[i] += pTOAO[j,j]
+        return ao_elecnums
+    df = pd.DataFrame()
     i=1
     while i<=4:
         mol.atom=[['Li',(0,0,0)],['F',(0,0,i)]]
@@ -1685,15 +1708,18 @@ if  __name__ == '__main__':
         mySFNOCI = SFNOCI(m,4,4,groupA = 'Li')
         mySFNOCI.spin = 0
         mo = addons.sort_mo(mySFNOCI,m.mo_coeff,AS_list,1)
-        eigenvalues, eigenvectors = mySFNOCI.kernel(mo, nroots = 4)
+        ac_mo_coeff = mo[:,[4,5,6,7]]
+        PO = possible_occ(4,4)
+        Li_elec = electron_num_by_lowdin(mol,ac_mo_coeff, PO, 'Li')
+        #eigenvalues, eigenvectors = mySFNOCI.kernel(mo, nroots = 4)
+        df[i] = Li_elec
 
-
-        print(eigenvalues)
-        x_list.append(i)
-        e1_list.append((eigenvalues[0]-reei[0])*627.503)
-        e2_list.append((eigenvalues[1]-reei[0])*627.503)
-        e3_list.append((eigenvalues[2]-reei[0])*627.503)
-        e4_list.append((eigenvalues[3]-reei[0])*627.503)
+        #print(eigenvalues)
+        #x_list.append(i)
+        #e1_list.append((eigenvalues[0]-reei[0])*627.503)
+        #e2_list.append((eigenvalues[1]-reei[0])*627.503)
+        #e3_list.append((eigenvalues[2]-reei[0])*627.503)
+        #e4_list.append((eigenvalues[3]-reei[0])*627.503)
         
         #e5_list.append((eigenvalues[4]-reei[0])*627.503)
         #e6_list.append((eigenvalues[5]-reei[0])*627.503)
@@ -1705,20 +1731,22 @@ if  __name__ == '__main__':
         #print(S2)
         i+=0.1
         
-    plt.plot(x_list,e1_list,label='ground state(Singlet)')
-    plt.plot(x_list,e2_list,label='first excited state(Triplet)')
-    plt.plot(x_list,e3_list,label='second excited state(Singlet)')
-    plt.plot(x_list,e4_list,label='3excited state')
+    #plt.plot(x_list,e1_list,label='ground state(Singlet)')
+    #plt.plot(x_list,e2_list,label='first excited state(Triplet)')
+    #plt.plot(x_list,e3_list,label='second excited state(Singlet)')
+    #plt.plot(x_list,e4_list,label='3excited state')
     #plt.plot(x_list,e5_list,label='4excited state')
     #plt.plot(x_list,e6_list,label='5excited state')
     #plt.plot(x_list,e7_list,label='6excited state')
     #plt.plot(x_list,e8_list,label='7excited state')
 
-    plt.legend()
-    plt.show()
+    #plt.legend()
+    #plt.show()
     #df=pd.DataFrame(ma)
     #df.to_excel('LiF_Spinsquare_SFNOCI.xlsx',index=False)
-    
+    df = df.T
+    file = "~/mygit/pySFNOCI/pySFNOCI/Li_electronnum_distance.xlsx"
+    df.to_excel(file)
 
 
     
