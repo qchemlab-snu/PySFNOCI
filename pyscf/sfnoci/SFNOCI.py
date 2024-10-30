@@ -937,6 +937,7 @@ def h1e_for_SFNOCI(SFNOCI, Adm = None, MO = None, W = None, ncas = None, ncore =
                  energy_core[i] += lib.einsum('ab,ab -> ', W[i,i],corevhf)
                  energy_core[i] += energy_nuc
                  energy_core[i] += 2*lib.einsum('ab,ab->', W[i,i], hcore)   
+    SFNOCI.h1eff = h1eff
     SFNOCI.core_energies = energy_core
     return h1eff, energy_core
                          
