@@ -928,16 +928,15 @@ def h1e_for_SFNOCI(SFNOCI, Adm = None, MO = None, W = None, ncas = None, ncore =
     h1eff = numpy.zeros((p,p,ncas,ncas))       
     energy_core = numpy.zeros(p)
     energy_nuc = SFNOCI.energy_nuc()   
-    eri = SFNOCI.mol.intor('int2e')
     ha1e = lib.einsum('ai,ab,bj->ij',mo_cas,hcore,mo_cas)      
     for i in range(0,p):
-        for j in range(0,p):      
-            h1eff[i,j] = ha1e + lib.einsum('ijab,ab->ij', Adm, 2*J_matrix(eri,W[i,j])+K_matrix(eri,W[i,j]))
+        for j in range(0,p):
+            corevhf = SFNOCI.get_veff(dm = 2 * W[i,j])
+            h1eff[i,j] = ha1e + lib.einsum('ijab,ab -> ij', Adm , corevhf)
             if i==j:
-                energy_core[i] += (lib.einsum('ab,ab->',W[i,i],2*J_matrix(eri,W[i,i])+K_matrix(eri,W[i,i])))
-                energy_core[i] += energy_nuc
-                energy_core[i] += 2*lib.einsum('ab,ab->',hcore, W[i,i])   
-    SFNOCI.h1eff = h1eff
+                 energy_core[i] += lib.einsum('ab,ab -> ', W[i,i],corevhf)
+                 energy_core[i] += energy_nuc
+                 energy_core[i] += 2*lib.einsum('ab,ab->', W[i,i], hcore)   
     SFNOCI.core_energies = energy_core
     return h1eff, energy_core
                          
@@ -1667,6 +1666,11 @@ if  __name__ == '__main__':
     
     from pyscf.mcscf import addons
     mo = addons.sort_mo(mySFNOCI,rm.mo_coeff, AS_list,1)
+    reei, ci = mySFNOCI.kernel(mo,nroots= 4)
+    print(reei)
+    
+    
+    '''
     PO = possible_occ(4,4)
     ac_mo_coeff = mo[:,[4,5,6,7]]
     #reei, ev = mySFNOCI.kernel(mo, nroots = 12)
@@ -1695,6 +1699,7 @@ if  __name__ == '__main__':
                 ao_elecnums[i] += pTOAO[j,j]
         return ao_elecnums
     df = pd.DataFrame()
+    '''
     i=1
     while i<=4:
         mol.atom=[['Li',(0,0,0)],['F',(0,0,i)]]
@@ -1708,18 +1713,18 @@ if  __name__ == '__main__':
         mySFNOCI = SFNOCI(m,4,4,groupA = 'Li')
         mySFNOCI.spin = 0
         mo = addons.sort_mo(mySFNOCI,m.mo_coeff,AS_list,1)
-        ac_mo_coeff = mo[:,[4,5,6,7]]
-        PO = possible_occ(4,4)
-        Li_elec = electron_num_by_lowdin(mol,ac_mo_coeff, PO, 'Li')
-        #eigenvalues, eigenvectors = mySFNOCI.kernel(mo, nroots = 4)
-        df[i] = Li_elec
+        #ac_mo_coeff = mo[:,[4,5,6,7]]
+        #PO = possible_occ(4,4)
+        #Li_elec = electron_num_by_lowdin(mol,ac_mo_coeff, PO, 'Li')
+        eigenvalues, eigenvectors = mySFNOCI.kernel(mo, nroots = 4)
+        #df[i] = Li_elec
 
-        #print(eigenvalues)
-        #x_list.append(i)
-        #e1_list.append((eigenvalues[0]-reei[0])*627.503)
-        #e2_list.append((eigenvalues[1]-reei[0])*627.503)
-        #e3_list.append((eigenvalues[2]-reei[0])*627.503)
-        #e4_list.append((eigenvalues[3]-reei[0])*627.503)
+        print(eigenvalues)
+        x_list.append(i)
+        e1_list.append((eigenvalues[0]-reei[0])*627.503)
+        e2_list.append((eigenvalues[1]-reei[0])*627.503)
+        e3_list.append((eigenvalues[2]-reei[0])*627.503)
+        e4_list.append((eigenvalues[3]-reei[0])*627.503)
         
         #e5_list.append((eigenvalues[4]-reei[0])*627.503)
         #e6_list.append((eigenvalues[5]-reei[0])*627.503)
@@ -1731,22 +1736,22 @@ if  __name__ == '__main__':
         #print(S2)
         i+=0.1
         
-    #plt.plot(x_list,e1_list,label='ground state(Singlet)')
-    #plt.plot(x_list,e2_list,label='first excited state(Triplet)')
-    #plt.plot(x_list,e3_list,label='second excited state(Singlet)')
-    #plt.plot(x_list,e4_list,label='3excited state')
+    plt.plot(x_list,e1_list,label='ground state(Singlet)')
+    plt.plot(x_list,e2_list,label='first excited state(Triplet)')
+    plt.plot(x_list,e3_list,label='second excited state(Singlet)')
+    plt.plot(x_list,e4_list,label='3excited state')
     #plt.plot(x_list,e5_list,label='4excited state')
     #plt.plot(x_list,e6_list,label='5excited state')
     #plt.plot(x_list,e7_list,label='6excited state')
     #plt.plot(x_list,e8_list,label='7excited state')
 
     #plt.legend()
-    #plt.show()
+    plt.show()
     #df=pd.DataFrame(ma)
     #df.to_excel('LiF_Spinsquare_SFNOCI.xlsx',index=False)
-    df = df.T
-    file = "~/mygit/pySFNOCI/pySFNOCI/Li_electronnum_distance.xlsx"
-    df.to_excel(file)
+    #df = df.T
+    #file = "~/mygit/pySFNOCI/pySFNOCI/Li_electronnum_distance.xlsx"
+    #df.to_excel(file)
 
 
     
