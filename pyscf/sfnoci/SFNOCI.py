@@ -420,7 +420,7 @@ Keyword argument "init_dm" is replaced by "dm0"''')
 
     return scf_conv, e_tot, mo_energy, mo_coeff, mo_occ
 
-def optimized_mo(mf,mo_energy,mo_coeff,AS_list,core_list,nelecas,mode=0,conv_tol = 1e-10, max_cycle = 100, groupA = None):
+def optimized_mo(mf,mo_energy,mo_coeff,AS_list,core_list,nelecas,mode=0,conv_tol = 1e-10, max_cycle = 100, groupA = None, thres = 0.2):
     ASN=len(AS_list)
     nASE = nelecas[0] + nelecas[1]
     N=mo_coeff.shape[0]
@@ -443,7 +443,7 @@ def optimized_mo(mf,mo_energy,mo_coeff,AS_list,core_list,nelecas,mode=0,conv_tol
               optimized_mo[i]=mo_coeff
     else :
         if isinstance(groupA, str):
-            group = grouping_by_lowdin(mf.mol,mo_coeff[:,AS_list],PO, groupA)
+            group = grouping_by_lowdin(mf.mol,mo_coeff[:,AS_list],PO, groupA, thres= thres)
         elif isinstance(groupA, list):
             group = grouping_by_occ(PO,groupA)
         else: NotImplementedError
@@ -639,8 +639,6 @@ def contract_H(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_i
                                   t2aa.ctypes.data_as(ctypes.c_void_p), t2aa_nonzero.ctypes.data_as(ctypes.c_void_p), ctypes.c_int(t2aann),
                                   t2bb.ctypes.data_as(ctypes.c_void_p), t2bb_nonzero.ctypes.data_as(ctypes.c_void_p), ctypes.c_int(t2bbnn),
                                   TSc.ctypes.data_as(ctypes.c_void_p), energy_core.ctypes.data_as(ctypes.c_void_p))
-    print("progress")
-
     return cinew
             
 def make_hdiag(h1eff, eri, ncas, nelecas, PO, group, energy_core, opt = None):
@@ -1056,13 +1054,14 @@ class SFNOCI(CASBase):
   '''
   conv_tol = 1e-10
   max_cycle = 100
-  def __init__(self, mf, ncas=0, nelecas=0, ncore = None, spin = None, mo_coeff = None, mo_occ = None, groupA = None, mode = 0):  
+  def __init__(self, mf, ncas=0, nelecas=0, ncore = None, spin = None, mo_coeff = None, mo_occ = None, groupA = None, mode = 0, thres = 0.2):  
       
       CASBase.__init__(self,mf, ncas, nelecas, ncore)
       if mo_coeff is None: mo_coeff = mf.mo_coeff
       if mo_occ is None: mo_occ   = mf.mo_occ     
       self._spin = spin
       self._groupA = groupA
+      self._thres = thres
       if isinstance(nelecas, (int, numpy.integer)):
          nelecb = (nelecas-self.spin)//2
          neleca = nelecas - nelecb
@@ -1109,6 +1108,14 @@ class SFNOCI(CASBase):
   @groupA.setter
   def groupA(self,x):
       self._groupA = x
+
+  @property
+  def lowdin_thres(self):
+      return self._thres
+  
+  @lowdin_thres.setter
+  def lowdin_thres(self, x):
+      self._thres = x
      
                             
   def possible_occ(self):
@@ -1136,7 +1143,7 @@ class SFNOCI(CASBase):
       ncas = self.ncas       
       AS_list = numpy.array(range(ncore,ncore + ncas))       
       core_list = numpy.array(range(0,ncore))
-      MO,PO,group= optimized_mo(self._scf,mo_energy,mo_coeff,AS_list,core_list,self.nelecas, mode, conv_tol = self.conv_tol, max_cycle = self.max_cycle , groupA = groupA)
+      MO,PO,group= optimized_mo(self._scf,mo_energy,mo_coeff,AS_list,core_list,self.nelecas, mode, conv_tol = self.conv_tol, max_cycle = self.max_cycle , groupA = groupA, thres = self.lowdin_thres)
       self.MO = MO
       self.PO = PO
       self.group = group
@@ -1664,12 +1671,12 @@ if  __name__ == '__main__':
     s1e = mol.intor('int1e_ovlp')
     mySFNOCI = SFNOCI(rm,4,4,groupA = 'Li')
     mySFNOCI.spin = 0
+    mySFNOCI.lowdin_thres= 0.2
     
     from pyscf.mcscf import addons
     mo = addons.sort_mo(mySFNOCI,rm.mo_coeff, AS_list,1)
     reei, ci = mySFNOCI.kernel(mo,nroots= 4)
     print(reei)
-    
     
     '''
     PO = possible_occ(4,4)
