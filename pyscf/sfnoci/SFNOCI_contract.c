@@ -158,7 +158,7 @@ for (int i =0; i <t2bb_nonzero_size; i++){
     str0b = t2bb_nonzero[i*6+5];
     str2occ(w_occb, stringsb[str0b], ncas);
     str2occ(x_occb, stringsb[str1b], ncas);
-    for (int str0a = 0; str0a < nb; str0a++){
+    for (int str0a = 0; str0a < na; str0a++){
         str2occ(w_occa, stringsa[str0a], ncas);
         
 
