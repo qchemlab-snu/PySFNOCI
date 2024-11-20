@@ -927,14 +927,17 @@ def h1e_for_SFNOCI(SFNOCI, Adm = None, MO = None, W = None, ncas = None, ncore =
     energy_core = numpy.zeros(p)
     energy_nuc = SFNOCI.energy_nuc()   
     ha1e = lib.einsum('ai,ab,bj->ij',mo_cas,hcore,mo_cas)      
+    
     for i in range(0,p):
         for j in range(0,p):
+            cput0 = (logger.process_clock(), logger.perf_counter())
             corevhf = SFNOCI.get_veff(dm = 2 * W[i,j])
             h1eff[i,j] = ha1e + lib.einsum('ijab,ab -> ij', Adm , corevhf)
             if i==j:
                  energy_core[i] += lib.einsum('ab,ab -> ', W[i,i],corevhf)
                  energy_core[i] += energy_nuc
                  energy_core[i] += 2*lib.einsum('ab,ab->', W[i,i], hcore)   
+            cput1 = logger.timer(SFNOCI, 'effective hamiltonian (%d, %d)' %(i,j) , *cput0)
     SFNOCI.h1eff = h1eff
     SFNOCI.core_energies = energy_core
     return h1eff, energy_core
@@ -1235,8 +1238,9 @@ class SFNOCI(CASBase):
       else: W, TSc = self.get_SVD_matrices(MO , group)
       cput1 = logger.timer(self,'SVD and core density matrix calculation', *cput1)          
       h1eff, energy_core = self.get_h1cas(Adm , MO , W)
+      cput1 = logger.timer(self,'effective 1e hamiltonians and core energies calculation', *cput1)
       self.mo_eri = self.get_h2eff(mo)
-      cput1 = logger.timer(self,'effective hamiltonian calculation', *cput1)
+      cput1 = logger.timer(self, 'effective 2e hamiltonian calculation', *cput1)
       hamiltonian = self.construct_reduced_hamiltonian(mo, h1eff, energy_core, PO, TSc)
       eigenvalues, eigenvectors = gen_eig(hamiltonian)
       self.ci = eigenvectors
@@ -1272,7 +1276,9 @@ class SFNOCI(CASBase):
       else: W, TSc = self.get_SVD_matrices(MO , group)
       cput1 = logger.timer(self,'SVD and core density matrix calculation', *cput1)       
       h1eff, energy_core = self.get_h1cas(Adm , MO , W)
+      cput1 = logger.timer(self,'effective 1e hamiltonians and core energies calculation', *cput1)
       eri = self.get_h2eff(mo)
+      cput1 = logger.timer(self, 'effective 2e hamiltonian calculation', *cput1)
       self.mo_eri = eri
       cput1 = logger.timer(self,'effective hamiltonian calculation', *cput1)
       e, c = kernel_SFNOCI(self, h1eff, eri, self.ncas, self.nelecas, PO, group, TSc, energy_core, ci0, link_index=None,
