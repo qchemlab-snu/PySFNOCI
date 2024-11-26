@@ -310,10 +310,6 @@ Keyword argument "init_dm" is replaced by "dm0"''')
         mo_basis_fock=(mo_coeff.T.dot(fock)).dot(mo_coeff)
         I=numpy.identity(N-ASN)
         reduced_mo_basis_fock=mo_basis_fock[numpy.ix_(~numpy.isin(numpy.arange(mo_basis_fock.shape[0]),AS_list),~numpy.isin(numpy.arange(mo_basis_fock.shape[1]),AS_list))]
-        mo_basis_s1e=(mo_coeff.T.dot(s1e)).dot(mo_coeff)
-        
-        reduced_mo_basis_s1e=numpy.zeros((N-ASN,N-ASN))
-        reduced_mo_basis_s1e=mo_basis_s1e[numpy.ix_(~numpy.isin(numpy.arange(mo_basis_s1e.shape[0]),AS_list),~numpy.isin(numpy.arange(mo_basis_s1e.shape[1]),AS_list))] 
         new_mo_energy, mo_basis_new_mo_coeff=mf.eig(reduced_mo_basis_fock,I)
         reduced_mo_coeff=numpy.delete(mo_coeff,AS_list,axis=1)
         new_mo_coeff=reduced_mo_coeff.dot(mo_basis_new_mo_coeff)
@@ -366,12 +362,8 @@ Keyword argument "init_dm" is replaced by "dm0"''')
         mo_basis_fock=(mo_coeff.T.dot(fock)).dot(mo_coeff)
         I=numpy.identity(N-ASN)
         reduced_mo_basis_fock=mo_basis_fock[numpy.ix_(~numpy.isin(numpy.arange(mo_basis_fock.shape[0]),AS_list),~numpy.isin(numpy.arange(mo_basis_fock.shape[1]),AS_list))]
-        mo_basis_s1e=(mo_coeff.T.dot(s1e)).dot(mo_coeff)
 
-        reduced_mo_basis_s1e=numpy.zeros((N-ASN,N-ASN))
-        reduced_mo_basis_s1e=mo_basis_s1e[numpy.ix_(~numpy.isin(numpy.arange(mo_basis_s1e.shape[0]),AS_list),~numpy.isin(numpy.arange(mo_basis_s1e.shape[1]),AS_list))]
-
-        new_mo_energy, mo_basis_new_mo_coeff=mf.eig(reduced_mo_basis_fock,reduced_mo_basis_s1e)
+        new_mo_energy, mo_basis_new_mo_coeff=mf.eig(reduced_mo_basis_fock,I)
         reduced_mo_coeff=numpy.delete(mo_coeff,AS_list,axis=1)
         new_mo_coeff=reduced_mo_coeff.dot(mo_basis_new_mo_coeff)
 
@@ -930,14 +922,12 @@ def h1e_for_SFNOCI(SFNOCI, Adm = None, MO = None, W = None, ncas = None, ncore =
     
     for i in range(0,p):
         for j in range(0,p):
-            cput0 = (logger.process_clock(), logger.perf_counter())
             corevhf = SFNOCI.get_veff(dm = 2 * W[i,j])
             h1eff[i,j] = ha1e + lib.einsum('ijab,ab -> ij', Adm , corevhf)
             if i==j:
                  energy_core[i] += lib.einsum('ab,ab -> ', W[i,i],corevhf)
                  energy_core[i] += energy_nuc
                  energy_core[i] += 2*lib.einsum('ab,ab->', W[i,i], hcore)   
-            cput1 = logger.timer(SFNOCI, 'effective hamiltonian (%d, %d)' %(i,j) , *cput0)
     SFNOCI.h1eff = h1eff
     SFNOCI.core_energies = energy_core
     return h1eff, energy_core
