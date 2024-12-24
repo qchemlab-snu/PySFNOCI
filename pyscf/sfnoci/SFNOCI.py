@@ -568,10 +568,7 @@ def contract_H_slow(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,l
     cinew.reshape(-1)
     return cinew
 
-def contract_H(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_index = None):
-    '''Compute H|CI>
-    
-    '''
+def gen_excitations(ncas, nelecas, na, nb ,link_index = None):
     if isinstance(nelecas, (int, numpy.integer)):
         nelecb = nelecas//2
         neleca = nelecas - nelecb
@@ -582,17 +579,6 @@ def contract_H(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_i
         link_indexb = cistring.gen_linkstr_index(range(ncas), nelecb)
     else:
         link_indexa, link_indexb = link_index
-   
-    na = cistring.num_strings(ncas,neleca)
-    nb = cistring.num_strings(ncas,nelecb)
-    civec = numpy.asarray(civec, order = 'C')
-    cinew = numpy.zeros_like(civec)
-    erieff = numpy.asarray(erieff, order = 'C', dtype= numpy.float64)
-    PO = numpy.asarray(PO, order = 'C', dtype=numpy.int32)
-    PO_nrows = PO.shape[0]
-    cgroup, group_sizes, num_groups = python_list_to_c_array(group)
-    stringsa = cistring.make_strings(range(ncas),neleca)
-    stringsb = cistring.make_strings(range(ncas),nelecb)
     t2aa = numpy.zeros((ncas,ncas,ncas,ncas,na,na), dtype=numpy.int32)
     t2bb = numpy.zeros((ncas,ncas,ncas,ncas,nb,nb),dtype=numpy.int32)
     t1a = numpy.zeros((ncas,ncas,na,na),dtype=numpy.int32)
@@ -607,10 +593,66 @@ def contract_H(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_i
               t1b[a1,i1,str1b,str0b] += signb1
               for a2 , i2, str2b, signb2 in link_indexb[str1b]:
                   t2bb[a2, i2, a1, i1, str2b, str0b] += signb1 * signb2
+    return t1a, t1b, t2aa, t2bb
+
+def gen_nonzero_excitations(t1a, t1b, t2aa, t2bb):
     t1a_nonzero = numpy.array(numpy.array(numpy.nonzero(t1a)).T, order = 'C', dtype = numpy.int32)
     t1b_nonzero = numpy.array(numpy.array(numpy.nonzero(t1b)).T, order = 'C', dtype = numpy.int32)
     t2aa_nonzero = numpy.array(numpy.array(numpy.nonzero(t2aa)).T, order = 'C', dtype = numpy.int32)
     t2bb_nonzero = numpy.array(numpy.array(numpy.nonzero(t2bb)).T, order = 'C', dtype = numpy.int32)
+    return t1a_nonzero, t1b_nonzero, t2aa_nonzero, t2bb_nonzero
+
+def contract_H(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_index = None, ts = None, t_nonzero = None):
+    '''Compute H|CI>
+    
+    '''
+    if isinstance(nelecas, (int, numpy.integer)):
+        nelecb = nelecas//2
+        neleca = nelecas - nelecb
+    else:
+        neleca, nelecb = nelecas
+    
+    na = cistring.num_strings(ncas,neleca)
+    nb = cistring.num_strings(ncas,nelecb)
+
+    if ts is None:
+        if link_index is None:
+            link_indexa = cistring.gen_linkstr_index(range(ncas), neleca)
+            link_indexb = cistring.gen_linkstr_index(range(ncas), nelecb)
+            link_index = (link_indexa, link_indexb)
+        else:
+            link_indexa, link_indexb = link_index
+        t1a, t1b, t2aa, t2bb= gen_excitations(ncas, nelecas,na,nb,link_index)
+    else: t1a, t1b, t2aa, t2bb = ts
+    if t_nonzero is None:
+        t1a_nonzero, t1b_nonzero, t2aa_nonzero, t2bb_nonzero = gen_nonzero_excitations(t1a, t1b, t2aa, t2bb)
+    else: t1a_nonzero, t1b_nonzero, t2aa_nonzero, t2bb_nonzero = t_nonzero
+    civec = numpy.asarray(civec, order = 'C')
+    cinew = numpy.zeros_like(civec)
+    erieff = numpy.asarray(erieff, order = 'C', dtype= numpy.float64)
+    PO = numpy.asarray(PO, order = 'C', dtype=numpy.int32)
+    PO_nrows = PO.shape[0]
+    cgroup, group_sizes, num_groups = python_list_to_c_array(group)
+    stringsa = cistring.make_strings(range(ncas),neleca)
+    stringsb = cistring.make_strings(range(ncas),nelecb)
+    # t2aa = numpy.zeros((ncas,ncas,ncas,ncas,na,na), dtype=numpy.int32)
+    # t2bb = numpy.zeros((ncas,ncas,ncas,ncas,nb,nb),dtype=numpy.int32)
+    # t1a = numpy.zeros((ncas,ncas,na,na),dtype=numpy.int32)
+    # t1b = numpy.zeros((ncas,ncas,nb,nb),dtype=numpy.int32) 
+    # for str0a , taba in enumerate(link_indexa):
+    #       for a1, i1, str1a, signa1 in link_indexa[str0a]:
+    #           t1a[a1,i1,str1a,str0a] += signa1 
+    #           for a2 , i2, str2a, signa2 in link_indexa[str1a]:
+    #               t2aa[a2, i2, a1, i1, str2a, str0a] += signa1 * signa2
+    # for str0b , tabb in enumerate(link_indexb):
+    #       for a1, i1, str1b, signb1 in link_indexb[str0b]:
+    #           t1b[a1,i1,str1b,str0b] += signb1
+    #           for a2 , i2, str2b, signb2 in link_indexb[str1b]:
+    #               t2bb[a2, i2, a1, i1, str2b, str0b] += signb1 * signb2
+    # t1a_nonzero = numpy.array(numpy.array(numpy.nonzero(t1a)).T, order = 'C', dtype = numpy.int32)
+    # t1b_nonzero = numpy.array(numpy.array(numpy.nonzero(t1b)).T, order = 'C', dtype = numpy.int32)
+    # t2aa_nonzero = numpy.array(numpy.array(numpy.nonzero(t2aa)).T, order = 'C', dtype = numpy.int32)
+    # t2bb_nonzero = numpy.array(numpy.array(numpy.nonzero(t2bb)).T, order = 'C', dtype = numpy.int32)
     t1ann = t1a_nonzero.shape[0]
     t1bnn = t1b_nonzero.shape[0]
     t2aann = t2aa_nonzero.shape[0]
@@ -907,7 +949,7 @@ def fix_spin_(fciobj, shift=.1, ss=None):
 
            
 def h1e_for_SFNOCI(SFNOCI, Adm = None, MO = None, W = None, ncas = None, ncore = None):
-    if W is None : SFNOCI.W
+    if W is None : W = SFNOCI.W
     if ncas is None : ncas = SFNOCI.ncas
     if ncore is None : ncore = SFNOCI.ncore
     if MO is None : MO = SFNOCI.MO           
@@ -1006,10 +1048,21 @@ def kernel_SFNOCI(mySFNOCI, h1eff, eri, ncas, nelecas, PO, group, TSc, energy_co
     precond = mySFNOCI.make_precond(hdiag)
     addr = [0]
     erieff = mySFNOCI.absorb_h1eff(h1eff,eri,ncas,nelec,.5)
+    na = cistring.num_strings(ncas,nelec[0])
+    nb = cistring.num_strings(ncas,nelec[1])
+    if link_index is None:
+            link_indexa = cistring.gen_linkstr_index(range(ncas), nelec[0])
+            link_indexb = cistring.gen_linkstr_index(range(ncas), nelec[1])
+            link_index = (link_indexa, link_indexb)
+    else:
+        link_indexa, link_indexb = link_index
+    
+    ts = gen_excitations(ncas, nelecas,na,nb,link_index)
+    t_nonzero = gen_nonzero_excitations(ts[0], ts[1], ts[2], ts[3])
     if hop is None:
         cpu0 = [logger.process_clock(), logger.perf_counter()]
         def hop(c):
-            hc = mySFNOCI.contract_H(erieff, c, ncas, nelecas, PO, group, TSc, energy_core ,link_index)
+            hc = mySFNOCI.contract_H(erieff, c, ncas, nelecas, PO, group, TSc, energy_core ,link_index, ts, t_nonzero)
             cpu0[:] = log.timer_debug1('contract_H', *cpu0)
             return hc.ravel()
     def init_guess():
@@ -1511,8 +1564,8 @@ class SFNOCI(CASBase):
       rdm2aa, rdm2ab, rdm2ba, rdm2bb = self.make_rdm2s(mo_coeff, ci, Adm, W, PO, TSc, ncas, nelecas, ncore)
       return rdm2aa + rdm2ab + rdm2ba + rdm2bb
   
-  def contract_H(self, erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_index = None):
-      return  contract_H(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_index)
+  def contract_H(self, erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_index = None, ts = None, t_nonzero = None):
+      return  contract_H(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_index, ts, t_nonzero)
   
   def contract_ss(self, civec, ncas = None, nelecas = None):
       if ncas is None : ncas = self.ncas
@@ -1586,7 +1639,7 @@ class SpinPenaltySFNOCISolver:
     def base_contract_H (self, *args, **kwargs):
         return super().contract_H (*args, **kwargs)
     
-    def contract_H(self, erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_index = None, **kwargs):
+    def contract_H(self, erieff, civec, ncas, nelecas, PO, group, TSc, energy_core ,link_index = None, ts = None, t_nonzero = None, **kwargs):
         if isinstance(nelecas, (int, numpy.number)):
             sz = (nelecas % 2) * .5
         else:
@@ -1608,7 +1661,7 @@ class SpinPenaltySFNOCISolver:
             ci1 += self.contract_ss(tmp, ncas, nelecas).reshape(civec.shape)
             tmp = None
         ci1 *= self.ss_penalty
-        ci0 = super().contract_H(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core, link_index, **kwargs)
+        ci0 = super().contract_H(erieff, civec, ncas, nelecas, PO, group, TSc, energy_core, link_index, ts, t_nonzero, **kwargs)
         ci1 += ci0.reshape(civec.shape)
         return ci1
     
