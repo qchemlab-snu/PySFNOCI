@@ -1627,7 +1627,9 @@ class SpinPenaltySFNOCISolver:
         self.__dict__.update (mySFNOCI.__dict__)
         self.ss_value = ss_value
         self.ss_penalty = shift
-        self.davidson_only = self.base.fcisolver.davidson_only = True
+        self.davidson_only = True
+        if hasattr(self.base, 'fcisolver'):
+            self.base.fcisolver.davidson_only = True
 
     def undo_fix_spin(self):
         obj = lib.view(self, lib.drop_class(self.__class__, SpinPenaltySFNOCISolver))
