@@ -146,6 +146,25 @@ def python_list_to_c_array(python_list):
             group_sizes[i] = group_size  
         return flat_list, group_sizes, num_groups
     
+def group_info_list(ncas, nelecas, PO, group):
+    stringsa = cistring.make_strings(range(0,ncas), nelecas[0])
+    stringsb = cistring.make_strings(range(0,ncas), nelecas[1])
+    na = len(stringsa)
+    nb = len(stringsb)
+    group_info = numpy.zeros((na,nb))
+    for stra, strsa in enumerate(stringsa):
+        for strb, strsb in enumerate(stringsb):
+            occa = str2occ(stringsa[stra],ncas)
+            occb = str2occ(stringsb[strb],ncas)
+            occ = occa + occb
+            p = find_matching_rows(PO,occ)[0]
+            if group is not None:
+                p = num_to_group(group,p)
+            group_info[stra, strb] = p
+    return group_info
+            
+
+
 def grouping_by_lowdin(mol, ac_mo_coeff,PO, aolabel, thres = 0.2):
     ova = mol.intor_symmetric("cint1e_ovlp_sph")
     e,v = numpy.linalg.eigh(ova)
@@ -1291,11 +1310,11 @@ class SFNOCI(CASBase):
       logger.timer(self, 'All process', *cput0)
       return eigenvalues, eigenvectors
   
-  def matrix_kernel(self, mo = None):
+  def matrix_kernel(self, mo = None, debug = False):
       '''Calculate necessary matrices before constructing hamiltonian.
       '''
       if mo is not None : self.mo_coeff = mo
-      MO, PO, group = self.optimize_mo(mo)
+      MO, PO, group = self.optimize_mo(mo, debug = debug)
       Adm = self.get_active_dm(mo)
       if group is None :
          W, TSc = self.get_SVD_matrices(MO , PO)
@@ -1307,10 +1326,10 @@ class SFNOCI(CASBase):
   def kernel(self, mo = None, ci0=None,
                tol=None, lindep=None, max_cycle=None, max_space=None,
                nroots=None, davidson_only=None, pspace_size=None,
-               orbsym=None, wfnsym=None, ecore=0, **kwargs):
+               orbsym=None, wfnsym=None, ecore=0, debug = False, **kwargs):
       if mo is not None: self.mo_coeff = mo
       cput0 = (logger.process_clock(), logger.perf_counter())
-      MO, PO, group = self.optimize_mo(mo)
+      MO, PO, group = self.optimize_mo(mo, debug = debug)
       cput1 = logger.timer(self, 'core-vir rotation', *cput0)
       Adm = self.get_active_dm(mo)
       cput1 = logger.timer(self,'Active space density matrix calculation', *cput1)
@@ -1728,36 +1747,7 @@ if  __name__ == '__main__':
     mo = addons.sort_mo(mySFNOCI,rm.mo_coeff, AS_list,1)
     reei, ci = mySFNOCI.kernel(mo,nroots= 4)
     print(reei)
-    
-    '''
-    PO = possible_occ(4,4)
-    ac_mo_coeff = mo[:,[4,5,6,7]]
-    #reei, ev = mySFNOCI.kernel(mo, nroots = 12)
-    #print(reei,ev)
-    #print(mySFNOCI.spin_square(ev[32]))
-    def electron_num_by_lowdin(mol, ac_mo_coeff,PO, aolabel, thres = 0.2):
-        ova = mol.intor_symmetric("cint1e_ovlp_sph")
-        e,v = numpy.linalg.eigh(ova)
-        s12 = numpy.dot(v *numpy.sqrt(e), v.T.conj())
-
-        aolist = mol.search_ao_label(aolabel)
-        print(aolist)
-        a = len(aolist)
-        p = len(PO)
-        n = len(PO[0])
-        N = ac_mo_coeff.shape[0]
-        ao_elecnums = numpy.zeros(p)
-        for i in range(p):
-            one_list = numpy.where(PO[i] == 1)[0]
-            two_list = numpy.where(PO[i] == 2)[0]
-            pT1 = numpy.dot(ac_mo_coeff[:,one_list],ac_mo_coeff[:,one_list].T)
-            pT2 = numpy.dot(ac_mo_coeff[:,two_list],ac_mo_coeff[:,two_list].T)
-            pT = pT1 + pT2 * 2
-            pTOAO = reduce(numpy.dot,(s12,pT,s12))
-            for index, j in enumerate(aolist):
-                ao_elecnums[i] += pTOAO[j,j]
-        return ao_elecnums
-    df = pd.DataFrame()
+    print(group_info_list(4,(2,2),mySFNOCI.PO, mySFNOCI.group))
     '''
     i=1
     while i<=4:
@@ -1811,8 +1801,7 @@ if  __name__ == '__main__':
     #df = df.T
     #file = "~/mygit/pySFNOCI/pySFNOCI/Li_electronnum_distance.xlsx"
     #df.to_excel(file)
-
-
+    '''
     
     
   
