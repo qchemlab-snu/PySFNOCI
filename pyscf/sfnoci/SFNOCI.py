@@ -12,6 +12,7 @@ from pyscf import gto
 from pyscf import lib
 from pyscf.lib import logger
 from pyscf.scf import chkfile
+from pyscf.scf import rohf
 from pyscf import __config__
 from itertools import product
 from pyscf import ao2mo
@@ -431,6 +432,155 @@ Keyword argument "init_dm" is replaced by "dm0"''')
 
     return scf_conv, e_tot, mo_energy, mo_coeff, mo_occ
 
+def StateAverage_FASSCF(mySFNOCI, target_group, PO, group, mo_coeff = None, ncas = None, nelecas = None, ncore = None, conv_tol=1e-10, conv_tol_grad=None, max_cycle = 100,
+           dump_chk=True, dm0=None, callback=None, conv_check=True, **kwarg):
+    if mo_coeff is None : mo_coeff = mySFNOCI.mo_coeff
+    if ncas is None: ncas = mySFNOCI.ncas
+    if nelecas is None : nelecas = mySFNOCI.nelecas
+    if ncore is None : ncore = mySFNOCI.ncore
+    mf = mySFNOCI._scf
+    assert isinstance(mf, rohf.ROHF)
+
+    cput0 = (logger.process_clock(), logger.perf_counter())
+    stringsa = cistring.make_strings(range(ncas),nelecas[0])
+    stringsb = cistring.make_strings(range(ncas),nelecas[1])
+    na = len(stringsa)
+    nb = len(stringsb)
+    N = mo_coeff.shape[0]
+    AS_list = numpy.array(range(ncore, ncore + ncas))
+    ASN = len(AS_list)
+    AS_mo_coeff = mo_coeff[:,AS_list]
+    group_info = group_info_list(ncas, nelecas, PO, group)
+    group_info = group_info.reshape(-1)
+    print(group_info)
+    #PO_info = SFNOCI.group_info_list(ncas, nelecas, PO, None).reshape[-1]
+    target_conf = numpy.where(group_info == target_group)[0]
+    #occ_list = PO_info[target_conf]
+    
+    
+    mol = mf.mol
+    #mf.max_cycle = max_cycle
+    AS_dm_a = numpy.zeros((N,N))
+    AS_dm_b = numpy.zeros((N,N))
+    #target_conf = [8]
+    #print(target_conf)
+    for conf in target_conf:
+        stra = conf // nb
+        strb = conf % nb
+        #print(stra, strb)
+        mo_occa = str2occ(stringsa[stra], ncas)
+        mo_occb = str2occ(stringsb[strb], ncas)
+        mo_occ = (mo_occa, mo_occb)
+        print(mo_occ)
+        dm_a, dm_b = rohf.make_rdm1(AS_mo_coeff, mo_occ)
+        AS_dm_a += dm_a
+        AS_dm_b += dm_b
+    AS_dm_a = AS_dm_a / len(target_conf)
+    AS_dm_b = AS_dm_b / len(target_conf)
+    if dm0 is None:
+        core_mo_coeff = mo_coeff[:,:ncore]
+        dm0_core = (core_mo_coeff ).dot(core_mo_coeff.conj().T)
+        dm = numpy.asarray((dm0_core  + AS_dm_a , dm0_core + AS_dm_b))
+    else: 
+        dm = dm0
+    
+    h1e = mf.get_hcore(mol)
+    vhf = rohf.get_veff(mol, dm)
+    e_tot = mf.energy_tot(dm, h1e, vhf)
+    logger.info(mf, 'init E= %.15g', e_tot)
+
+    scf_conv = False
+    s1e = mf.get_ovlp(mol)
+    cput1 = logger.timer(mf, 'initialize scf', *cput0)
+    
+    for cycle in range(max_cycle):
+        dm_last = dm
+        last_hf_e = e_tot
+       
+        fock = mf.get_fock(h1e, s1e, vhf, dm)
+        mo_basis_fock=(mo_coeff.T.dot(fock)).dot(mo_coeff)
+        I=numpy.identity(N-ASN)
+        reduced_mo_basis_fock=mo_basis_fock[numpy.ix_(~numpy.isin(numpy.arange(mo_basis_fock.shape[0]),AS_list),~numpy.isin(numpy.arange(mo_basis_fock.shape[1]),AS_list))]
+        new_mo_energy, mo_basis_new_mo_coeff=mf.eig(reduced_mo_basis_fock,I)
+        reduced_mo_coeff=numpy.delete(mo_coeff,AS_list,axis=1)
+        new_mo_coeff=reduced_mo_coeff.dot(mo_basis_new_mo_coeff)
+        
+ 
+
+        for i in AS_list:
+            new_mo_coeff=numpy.insert(new_mo_coeff,i, mo_coeff[:,i],axis=1)
+        mo_coeff=new_mo_coeff
+
+
+        AS_fock_energy=lib.einsum('ai,aj,ij->a',numpy.conjugate(mo_coeff.T),mo_coeff.T,fock)
+        for i in AS_list:
+            new_mo_energy=numpy.insert(new_mo_energy,i,AS_fock_energy[i])
+        mo_energy = new_mo_energy
+
+        core_mo_coeff = mo_coeff[:,:ncore]
+        dm_core = (core_mo_coeff).dot(core_mo_coeff.conj().T)
+        dm =numpy.asarray((dm_core + AS_dm_a, dm_core + AS_dm_b))
+        #dm = mf.make_rdm1(mo_coeff,mo_occ)
+        vhf = mf.get_veff(mol, dm, dm_last, vhf)
+        e_tot = mf.energy_tot(dm, h1e, vhf)
+
+        fock_last = fock
+        fock = mf.get_fock(h1e, s1e, vhf, dm)
+        norm_ddm = numpy.linalg.norm(dm-dm_last)
+        logger.info(mf, 'cycle= %d E= %.15g  delta_E= %4.3g |ddm|= %4.3g',
+                    cycle+1, e_tot, e_tot-last_hf_e, norm_ddm)
+        if abs(e_tot-last_hf_e) < conv_tol and norm_ddm < numpy.sqrt(conv_tol):
+            scf_conv = True
+
+        cput1 = logger.timer(mf, 'cycle= %d'%(cycle+1), *cput1)
+
+        if scf_conv:
+            break
+
+    if scf_conv and conv_check:
+        # An extra diagonalization, to remove level shift
+        #fock = mf.get_fock(h1e, s1e, vhf, dm)  # = h1e + vhf
+        mo_basis_fock=(mo_coeff.T.dot(fock)).dot(mo_coeff)
+        I=numpy.identity(N-ASN)
+        reduced_mo_basis_fock=mo_basis_fock[numpy.ix_(~numpy.isin(numpy.arange(mo_basis_fock.shape[0]),AS_list),~numpy.isin(numpy.arange(mo_basis_fock.shape[1]),AS_list))]
+
+        new_mo_energy, mo_basis_new_mo_coeff=mf.eig(reduced_mo_basis_fock,I)
+        reduced_mo_coeff=numpy.delete(mo_coeff,AS_list,axis=1)
+        new_mo_coeff=reduced_mo_coeff.dot(mo_basis_new_mo_coeff)
+
+
+
+        for i in AS_list:
+            new_mo_coeff=numpy.insert(new_mo_coeff,i,mo_coeff[:,i],axis=1)
+
+        mo_coeff=new_mo_coeff
+            
+        AS_fock_energy=lib.einsum('ai,aj,ij->a',numpy.conjugate(mo_coeff.T),mo_coeff.T,fock)
+        for i in AS_list:
+            new_mo_energy=numpy.insert(new_mo_energy,i,AS_fock_energy[i])
+        mo_energy=new_mo_energy
+        dm_last = dm
+        core_mo_coeff = mo_coeff[:,:ncore]
+        dm_core = (core_mo_coeff * 2).dot(core_mo_coeff.conj().T)
+        dm = (dm_core / 2 + AS_dm_a, dm_core / 2 + AS_dm_b)
+        
+        vhf = mf.get_veff(mol, dm,dm_last,vhf)
+        e_tot, last_hf_e = mf.energy_tot(dm, h1e, vhf), e_tot
+        fock = mf.get_fock(h1e, s1e, vhf, dm)
+        norm_ddm = numpy.linalg.norm(dm-dm_last)
+
+        if abs(e_tot-last_hf_e) < conv_tol or norm_ddm < conv_tol_grad:
+            scf_conv = True
+        logger.info(mf, 'Extra cycle  E= %.15g  delta_E= %4.3g |ddm|= %4.3g',
+                    e_tot, e_tot-last_hf_e, norm_ddm)
+    logger.timer(mf, 'scf_cycle', *cput0)
+
+    if scf_conv==False:
+        mo_coeff = mySFNOCI.mo_coeff
+
+    
+    return scf_conv, e_tot, mo_energy, mo_coeff
+
 def optimized_mo(mf,mo_energy,mo_coeff,AS_list,core_list,nelecas,mode=0,conv_tol = 1e-10, max_cycle = 100, groupA = None, thres = 0.2):
     ASN=len(AS_list)
     nASE = nelecas[0] + nelecas[1]
@@ -472,8 +622,6 @@ def optimized_mo(mf,mo_energy,mo_coeff,AS_list,core_list,nelecas,mode=0,conv_tol
             print("occuped pattern index:")
             print(i)
     return optimized_mo, PO, group 
-  
-
 
 def absorb_h1eff(h1eff,eri,ncas,nelecas,fac=1):
     '''Modify 2e Hamiltonian to include effective 1e Hamiltonian contribution
@@ -1214,6 +1362,54 @@ class SFNOCI(CASBase):
       self.group = group
       self.AS_mo_coeff = MO[0][:,AS_list]
       return self.MO, self.PO, self.group
+  
+  def state_average_optimized_mo(self, mo_coeff = None, ncas = None, nelecas = None, ncore = None, groupA = None, debug = False):
+      if mo_coeff is None : mo_coeff = self.mo_coeff
+      if ncas is None : ncas = self.ncas
+      if nelecas is None : nelecas = self.nelecas
+      if ncore is None : ncore = self.ncore
+      if groupA is None : groupA = self.groupA
+      PO = possible_occ(ncas, nelecas[0] + nelecas[1])
+      N=mo_coeff.shape[0]
+      p = len(PO)
+      group = None
+      if groupA is None :
+            optimized_mo=numpy.zeros((p,N,N))
+            #SF-CAS
+            if debug:
+                for i, occ in enumerate(PO):
+                    optimized_mo[i]=mo_coeff
+            #SF-NOCI
+            else:
+               for i, occ in enumerate(PO):
+                conv, et, moe, moce, moocc = self.FASSCF(occ, mo_coeff, ncas, ncore, conv_tol= self.conv_tol , max_cycle= self.max_cycle)
+                print(conv, et)
+                optimized_mo[i]=moce
+                print("occuped pattern index:")
+                print(i)
+        
+      else:
+          if isinstance(groupA, str):
+            group = grouping_by_lowdin(self.mol,mo_coeff[:,ncore:ncore+ncas],PO, groupA, thres= self._thres)
+          elif isinstance(groupA, list):
+            group = grouping_by_occ(PO,groupA)
+          else: NotImplementedError
+          g = len(group)
+          optimized_mo = numpy.zeros((g,N,N))
+          for i in range(0,g):
+            #SF-CAS
+            if debug:
+                optimized_mo[i] = mo_coeff
+            #SF-GNOCI
+            else:
+                occ = group_occ(PO,group[i])
+                conv, et, moe, moce = StateAverage_FASSCF(self, i, PO, group, mo_coeff, ncas, nelecas, ncore, conv_tol= self.conv_tol , max_cycle= self.max_cycle)
+                print(conv, et)
+                optimized_mo[i]=moce
+                print(occ)
+                print("occuped pattern index:")
+                print(i)
+      return optimized_mo, PO, group 
                  
   def get_SVD_matrices(self, MO = None, PO_or_group = None):
       if MO is None : MO = self.MO 
@@ -1314,7 +1510,7 @@ class SFNOCI(CASBase):
       '''Calculate necessary matrices before constructing hamiltonian.
       '''
       if mo is not None : self.mo_coeff = mo
-      MO, PO, group = self.optimize_mo(mo, debug = debug)
+      MO, PO, group = self.state_average_optimized_mo(mo, debug = debug)
       Adm = self.get_active_dm(mo)
       if group is None :
          W, TSc = self.get_SVD_matrices(MO , PO)
@@ -1329,7 +1525,7 @@ class SFNOCI(CASBase):
                orbsym=None, wfnsym=None, ecore=0, debug = False, **kwargs):
       if mo is not None: self.mo_coeff = mo
       cput0 = (logger.process_clock(), logger.perf_counter())
-      MO, PO, group = self.optimize_mo(mo, debug = debug)
+      MO, PO, group = self.state_average_optimized_mo(mo, debug = debug)
       cput1 = logger.timer(self, 'core-vir rotation', *cput0)
       Adm = self.get_active_dm(mo)
       cput1 = logger.timer(self,'Active space density matrix calculation', *cput1)
@@ -1694,7 +1890,7 @@ if  __name__ == '__main__':
     mol.verbose = 5
     mol.output = None
 
-    mol.atom = [['Li', (0, 0, 0)],['F',(0,0,1.4)]]
+    mol.atom = [['Li', (0, 0, 0)],['F',(0,0,1000000)]]
     mol.basis = 'ccpvdz'
     
     x_list=[]
@@ -1746,8 +1942,9 @@ if  __name__ == '__main__':
     from pyscf.mcscf import addons
     mo = addons.sort_mo(mySFNOCI,rm.mo_coeff, AS_list,1)
     reei, ci = mySFNOCI.kernel(mo,nroots= 4)
-    print(reei)
-    print(group_info_list(4,(2,2),mySFNOCI.PO, mySFNOCI.group))
+    #print(reei)
+    #print(group_info_list(4,(2,2),mySFNOCI.PO, mySFNOCI.group))
+    #mySFNOCI.FASSCF([1,1,2,0], mo)
     '''
     i=1
     while i<=4:
@@ -1770,17 +1967,17 @@ if  __name__ == '__main__':
 
         print(eigenvalues)
         x_list.append(i)
-        e1_list.append((eigenvalues[0]-reei[0])*627.503)
-        e2_list.append((eigenvalues[1]-reei[0])*627.503)
-        e3_list.append((eigenvalues[2]-reei[0])*627.503)
-        e4_list.append((eigenvalues[3]-reei[0])*627.503)
+        e1_list.append((eigenvalues[0]-reei[0])*27.2114)
+        e2_list.append((eigenvalues[1]-reei[0])*27.2114)
+        e3_list.append((eigenvalues[2]-reei[0])*27.2114)
+        e4_list.append((eigenvalues[3]-reei[0])*27.2114)
         
         #e5_list.append((eigenvalues[4]-reei[0])*627.503)
         #e6_list.append((eigenvalues[5]-reei[0])*627.503)
         #e7_list.append((eigenvalues[6]-reei[0])*627.503)
         #e8_list.append((eigenvalues[7]-reei[0])*627.503)
 
-        #ma.append([i,(eigenvalues[0]-reei[0])*627.503,(eigenvalues[1]-reei[0])*627.503,(eigenvalues[2]-reei[0])*627.503, (eigenvalues[3]-reei[0])*627.503])
+        ma.append([i,(eigenvalues[0]-reei[0])*27.2114,(eigenvalues[1]-reei[0])*27.2114,(eigenvalues[2]-reei[0])*27.2114, (eigenvalues[3]-reei[0])*27.2114])
         #ma.append([i,S2[0],S2[1],S2[2],S2[3]])
         #print(S2)
         i+=0.1
@@ -1796,8 +1993,8 @@ if  __name__ == '__main__':
 
     #plt.legend()
     plt.show()
-    #df=pd.DataFrame(ma)
-    #df.to_excel('LiF_Spinsquare_SFNOCI.xlsx',index=False)
+    df=pd.DataFrame(ma)
+    df.to_excel('LiF_SFGNOCI_StateAverage.xlsx',index=False)
     #df = df.T
     #file = "~/mygit/pySFNOCI/pySFNOCI/Li_electronnum_distance.xlsx"
     #df.to_excel(file)
