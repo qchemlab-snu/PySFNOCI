@@ -1409,6 +1409,10 @@ class SFNOCI(CASBase):
                 print(occ)
                 print("occuped pattern index:")
                 print(i)
+      self.MO = optimized_mo
+      self.PO = PO
+      self.group = group
+      self.AS_mo_coeff = optimized_mo[0][:,ncore:ncore+ncas]
       return optimized_mo, PO, group 
                  
   def get_SVD_matrices(self, MO = None, PO_or_group = None):
@@ -1488,7 +1492,7 @@ class SFNOCI(CASBase):
       '''
       if mo is not None: self.mo_coeff = mo
       cput0 = (logger.process_clock(), logger.perf_counter())
-      MO, PO, group = self.optimize_mo(mo, debug)
+      MO, PO, group = self.state_average_optimized_mo(mo, debug = debug)
       cput1 = logger.timer(self, 'core-vir rotation', *cput0)
       Adm = self.get_active_dm(mo)
       if group is None :
@@ -1890,7 +1894,7 @@ if  __name__ == '__main__':
     mol.verbose = 5
     mol.output = None
 
-    mol.atom = [['Li', (0, 0, 0)],['F',(0,0,1000000)]]
+    mol.atom = [['Li', (0, 0, 0)],['F',(0,0,1.4)]]
     mol.basis = 'ccpvdz'
     
     x_list=[]
@@ -1937,14 +1941,41 @@ if  __name__ == '__main__':
     s1e = mol.intor('int1e_ovlp')
     mySFNOCI = SFNOCI(rm,4,4,groupA = 'Li')
     mySFNOCI.spin = 0
-    mySFNOCI.lowdin_thres= 0.2
+    mySFNOCI.lowdin_thres= 0.4
     
     from pyscf.mcscf import addons
     mo = addons.sort_mo(mySFNOCI,rm.mo_coeff, AS_list,1)
     reei, ci = mySFNOCI.kernel(mo,nroots= 4)
+    ncore = mySFNOCI.ncore
     #print(reei)
     #print(group_info_list(4,(2,2),mySFNOCI.PO, mySFNOCI.group))
-    #mySFNOCI.FASSCF([1,1,2,0], mo)
+    
+    # highspin_core = mo[:,:ncore]
+    # MO = mySFNOCI.MO
+    # group0mo_core = MO[0][:,:ncore]
+    # group1mo_core = MO[1][:,:ncore]
+    # group2mo_core = MO[2][:,:ncore]
+    # group3mo_core = MO[3][:,:ncore]
+    # group4mo_core = MO[4][:,:ncore]
+    # #group5mo_core = MO[5][:,:ncore]
+
+    # highspin_dm = (highspin_core * 2).dot(highspin_core.conj().T)
+    # group0_dm = (group0mo_core * 2).dot(group0mo_core.conj().T)
+    # group1_dm = (group1mo_core * 2).dot(group1mo_core.conj().T)
+    # group2_dm = (group2mo_core * 2).dot(group2mo_core.conj().T)
+    # group3_dm = (group3mo_core * 2).dot(group3mo_core.conj().T)
+    # group4_dm = (group4mo_core * 2).dot(group4mo_core.conj().T)
+    # #group5_dm = (group5mo_core * 2).dot(group5mo_core.conj().T)
+    
+    # from pyscf.tools import cubegen
+    # cubegen.density(mol, 'group0.cube', group0_dm - highspin_dm)
+    # cubegen.density(mol, 'group1.cube', group1_dm - highspin_dm)
+    # cubegen.density(mol, 'group2.cube', group2_dm - highspin_dm)
+    # cubegen.density(mol, 'group3.cube', group3_dm - highspin_dm)
+    # cubegen.density(mol, 'group4.cube', group4_dm - highspin_dm)
+    # #cubegen.density(mol, 'group5.cube', group5_dm - highspin_dm)
+    # #mySFNOCI.FASSCF([1,1,2,0], mo)
+    
     '''
     i=1
     while i<=4:
@@ -1958,6 +1989,7 @@ if  __name__ == '__main__':
 
         mySFNOCI = SFNOCI(m,4,4,groupA = 'Li')
         mySFNOCI.spin = 0
+        mySFNOCI.lowdin_thres= 0.4
         mo = addons.sort_mo(mySFNOCI,m.mo_coeff,AS_list,1)
         #ac_mo_coeff = mo[:,[4,5,6,7]]
         #PO = possible_occ(4,4)
