@@ -439,7 +439,7 @@ def StateAverage_FASSCF(mySFNOCI, target_group, PO, group, mo_coeff = None, ncas
     if nelecas is None : nelecas = mySFNOCI.nelecas
     if ncore is None : ncore = mySFNOCI.ncore
     mf = mySFNOCI._scf
-    assert isinstance(mf, rohf.ROHF), "The SCF class of SF-NOCI must be ROHF class."
+    assert isinstance(mf, rohf.ROHF), "The SCF class of SF-GNOCI must be ROHF class."
 
     cput0 = (logger.process_clock(), logger.perf_counter())
     stringsa = cistring.make_strings(range(ncas),nelecas[0])
