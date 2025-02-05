@@ -439,7 +439,7 @@ def StateAverage_FASSCF(mySFNOCI, target_group, PO, group, mo_coeff = None, ncas
     if nelecas is None : nelecas = mySFNOCI.nelecas
     if ncore is None : ncore = mySFNOCI.ncore
     mf = mySFNOCI._scf
-    assert isinstance(mf, rohf.ROHF)
+    assert isinstance(mf, rohf.ROHF), "The SCF class of SF-NOCI must be ROHF class."
 
     cput0 = (logger.process_clock(), logger.perf_counter())
     stringsa = cistring.make_strings(range(ncas),nelecas[0])
@@ -472,7 +472,7 @@ def StateAverage_FASSCF(mySFNOCI, target_group, PO, group, mo_coeff = None, ncas
         mo_occb = str2occ(stringsb[strb], ncas)
         mo_occ = (mo_occa, mo_occb)
         print(mo_occ)
-        dm_a, dm_b = rohf.make_rdm1(AS_mo_coeff, mo_occ)
+        dm_a, dm_b = mf.make_rdm1(AS_mo_coeff, mo_occ)
         AS_dm_a += dm_a
         AS_dm_b += dm_b
     AS_dm_a = AS_dm_a / len(target_conf)
@@ -481,11 +481,12 @@ def StateAverage_FASSCF(mySFNOCI, target_group, PO, group, mo_coeff = None, ncas
         core_mo_coeff = mo_coeff[:,:ncore]
         dm0_core = (core_mo_coeff ).dot(core_mo_coeff.conj().T)
         dm = numpy.asarray((dm0_core  + AS_dm_a , dm0_core + AS_dm_b))
+        #dm = 2 * dm0_core + AS_dm_a + AS_dm_b
     else: 
         dm = dm0
     
     h1e = mf.get_hcore(mol)
-    vhf = rohf.get_veff(mol, dm)
+    vhf = mf.get_veff(mol, dm)
     e_tot = mf.energy_tot(dm, h1e, vhf)
     logger.info(mf, 'init E= %.15g', e_tot)
 
@@ -1948,7 +1949,7 @@ if  __name__ == '__main__':
     reei, ci = mySFNOCI.kernel(mo,nroots= 4)
     ncore = mySFNOCI.ncore
     #print(reei)
-    #print(group_info_list(4,(2,2),mySFNOCI.PO, mySFNOCI.group))
+    #print(group_info_list(4,(2,2),mySFNOCI.PO, mySFNOCI.group))]
     
     # highspin_core = mo[:,:ncore]
     # MO = mySFNOCI.MO
@@ -2026,7 +2027,7 @@ if  __name__ == '__main__':
     #plt.legend()
     plt.show()
     df=pd.DataFrame(ma)
-    df.to_excel('LiF_SFGNOCI_StateAverage.xlsx',index=False)
+    #df.to_excel('LiF_SFGNOCI_StateAverage.xlsx',index=False)
     #df = df.T
     #file = "~/mygit/pySFNOCI/pySFNOCI/Li_electronnum_distance.xlsx"
     #df.to_excel(file)
